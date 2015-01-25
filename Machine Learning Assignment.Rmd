@@ -1,0 +1,78 @@
+---
+title: "Machine Learning Assignment"
+output: html_document
+---
+## Executive Summary  
+In this assignment, we are using a dataset from a device that captured people performing barbell lifts correctly and incorrectly in 5 different ways.  We then want to build a model to predict the manner in which they did the exercise, represented by the `classe` variable in the dataset.  To accomplish this task, I first cleaned the data by removing columns that were irrelevant or have low variability, then built a model using random forest with cross validation.  Finally, I used the model on a set of validation data resulting in an out-of-sample error of 0.35%.  This model was later used to generate predictions for the 20 test cases submitted separately online.
+
+## Setting global options  
+```{r setoptions, echo=TRUE, warning=FALSE}
+library(knitr)
+opts_chunk$set(echo=TRUE, warning=FALSE)
+library(caret)
+library(randomForest)
+```
+
+## Loading and preprocessing the data  
+#### Load the data  
+Download the data from the URL provided by the assignment and read them into `training` and `testing` data frames.
+```{r}
+trainURL = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(trainURL, "pml-training.csv")
+training <- read.csv("pml-training.csv", na.strings="NA")
+
+testURL = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(testURL, "pml-testing.csv")
+testing <- read.csv("pml-testing.csv", na.strings="NA")
+```
+#### Split up the training data set to be 75% training and 25% testing/validation to be used later for cross validation.  
+```{r}
+set.seed(12345)
+inTrain <- createDataPartition(y=training$classe, p=0.75, list=F)
+subtrain <- training[inTrain,]
+subtest <- training[-inTrain,]
+```
+#### Clean up `subtrain` data set in order to fit a model  
+First, remove columns with any NA values  
+```{r}
+cleantrain <- subtrain[, !apply(is.na(subtrain), 2, any)]
+```
+
+Also remove the first 5 columns because they are not useful predictors: X (an index), user name, and 3 timestamps.
+```{r}
+head(names(cleantrain), 5)
+cleantrain <- cleantrain[, c(-1, -2, -3, -4, -5)]
+```
+
+Next, remove zero covariates by using the nearZeroVar function since they won't be good predictors due to their low variability.  
+```{r}
+covars <- nearZeroVar(cleantrain, saveMetrics=T)
+# subset only the headings that resulted in near zero variability
+zcovars <- subset(covars, nzv==TRUE) 
+zcovars
+# remove columns which match the row names of the near zero variability columns
+cleantrain <- cleantrain[, -which(names(cleantrain) %in% rownames(zcovars))] 
+```
+## Run the model using random forest  
+Set the training controls to use "out of bag" which is recommended for random trees, and use 5 samples.  
+```{r}
+trControl <- trainControl(method = "oob", number = 5)
+```
+
+Train the model using "rf" random forest and the predefined train control from above.  
+```{r cache=TRUE}
+fit <- train(classe~., method="rf", data=cleantrain, trControl=trControl)
+```
+
+## Cross validate with the subtest validation data set using the model  
+```{r}
+prediction <- predict(fit, newdata=subtest)
+confusionMatrix(subtest$classe, prediction)
+```
+Here we see from the confusion matrix that the model is 99.65% accurate.  
+
+## Out of sample error rate  
+We expect the out of sample error rate to be very low because random forest is a very accurate modeler.  
+The out of sample error is 1-accuracy, which is 100% - 99.65% = 0.35%.  
+
+Since part 2 of the assignment is submitted separately online, I did not include the results of those predictions here.  
